@@ -1,0 +1,155 @@
+import os
+import pandas as pd
+from psychopy.gui import DlgFromDict
+from psychopy.visual import Window, TextStim, ImageStim
+from psychopy.core import Clock, quit, wait
+from psychopy.event import Mouse
+from psychopy.hardware.keyboard import Keyboard
+
+exp_info = {'participant_nr': '', 'age': '21'}
+dlg = DlgFromDict(exp_info)
+
+if not dlg.OK:
+    quit()
+
+p_name = exp_info['participant_nr']
+
+win = Window(size=(1200, 800), fullscr=False, color="black")
+mouse = Mouse(visible=False)
+kb = Keyboard()
+
+base_dir = os.path.dirname(os.path.abspath(__file__))
+f_list = os.path.join(base_dir, "HF_LF_60.csv")
+stim_dir = os.path.join(base_dir, "stimuli")
+
+foods = pd.read_csv(f_list)
+
+hf = foods[foods['fat'] == 1].sample(frac=0.4, random_state=None)
+lf = foods[foods['fat'] == 0].sample(frac=0.4, random_state=None)
+
+trial_foods = pd.concat([lf, lf, lf, hf], ignore_index=True)
+trial_foods = trial_foods.sample(frac=1).reset_index(drop=True)
+
+trial_foods['trial_type'] = ''
+trial_foods['cue'] = ''
+trial_foods['response'] = ''
+trial_foods['rt'] = ''
+trial_foods['accuracy'] = ''
+
+instructions_1 = TextStim(
+    win,
+    text="Welcome to the task.\n\nOn each trial, you will first see a cue and then a food image.",
+    color="white",
+    height=0.05,
+    wrapWidth=1.2
+)
+
+instructions_2 = TextStim(
+    win,
+    text="If you see a GO cue:\nPress the SPACE BAR as quickly as possible when the image appears.\n\nIf you see a NO-GO cue:\nDo NOT press any key when the image appears.",
+    color="white",
+    height=0.05,
+    wrapWidth=1.2
+)
+
+instructions_3 = TextStim(
+    win,
+    text="Remember:\nPress SPACE unless you see a NO-GO signal.\n\nPress SPACE to begin.",
+    color="white",
+    height=0.05,
+    wrapWidth=1.2
+)
+
+for instr in [instructions_1, instructions_2, instructions_3]:
+    instr.draw()
+    win.flip()
+    keys = kb.waitKeys(keyList=['space', 'escape'])
+    if keys[0].name == 'escape':
+        win.close()
+        quit()
+
+for i in range(len(trial_foods)):
+    trial = trial_foods.iloc[i]
+
+    if trial['fat'] == 1:
+        correct = "nogo"
+        cue_text = "NO-GO"
+        cue_color = "red"
+    else:
+        correct = "go"
+        cue_text = "GO"
+        cue_color = "green"
+
+    trial_foods.loc[i, 'trial_type'] = correct
+    trial_foods.loc[i, 'cue'] = cue_text
+
+    fixation = TextStim(win, text="+", color="white", height=0.08)
+    fixation.draw()
+    win.flip()
+    wait(0.5)
+
+    cue = TextStim(win, text=cue_text, color=cue_color, height=0.10, bold=True)
+    cue.draw()
+    win.flip()
+    wait(0.5)
+
+    path = os.path.join(stim_dir, trial['food'])
+    im = ImageStim(win, image=path)
+
+    kb.clearEvents()
+    t_clock = Clock()
+
+    response = "no_response"
+    rt = "NA"
+
+    while t_clock.getTime() < 0.75:
+        im.draw()
+        win.flip()
+
+        keys = kb.getKeys(['space', 'escape'], waitRelease=False)
+
+        if keys:
+            resp = keys[0].name
+
+            if resp == 'escape':
+                win.close()
+                quit()
+
+            elif resp == 'space' and response == "no_response":
+                response = "space"
+                rt = keys[0].rt
+
+    win.flip()
+    wait(0.5)
+
+    if correct == "go":
+        if response == "space":
+            accuracy = 1
+        else:
+            accuracy = 0
+    else:
+        if response == "no_response":
+            accuracy = 1
+        else:
+            accuracy = 0
+
+    trial_foods.loc[i, 'response'] = response
+    trial_foods.loc[i, 'rt'] = rt
+    trial_foods.loc[i, 'accuracy'] = accuracy
+
+end_text = TextStim(
+    win,
+    text="You have completed the task.\n\nThank you!",
+    color="white",
+    height=0.06
+)
+end_text.draw()
+win.flip()
+wait(2)
+
+output_name = f"{p_name}_gonogo.csv"
+trial_foods.to_csv(os.path.join(base_dir, output_name), index=False)
+
+
+win.close()
+quit()
